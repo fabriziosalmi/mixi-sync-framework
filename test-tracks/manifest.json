@@ -1,0 +1,163 @@
+{
+  "generator": "mixi-sync-framework/generate_test_tracks.py",
+  "sample_rate": 44100,
+  "channels": 2,
+  "duration_s": 240,
+  "first_beat_sample": 0,
+  "tracks": [
+    {
+      "file": "techno_080bpm.mp3",
+      "bpm_exact": 80.0,
+      "beat_period_ms": 750.0,
+      "total_beats": 320,
+      "md5": "d88947f4286b7cf99c9545be121b34a8"
+    },
+    {
+      "file": "techno_090bpm.mp3",
+      "bpm_exact": 90.0,
+      "beat_period_ms": 666.666667,
+      "total_beats": 360,
+      "md5": "d7fa9493a4201a889c40479c7ff63615"
+    },
+    {
+      "file": "techno_100bpm.mp3",
+      "bpm_exact": 100.0,
+      "beat_period_ms": 600.0,
+      "total_beats": 400,
+      "md5": "2d15c4c2662bf749ba4c419099a5bebc"
+    },
+    {
+      "file": "techno_110bpm.mp3",
+      "bpm_exact": 110.0,
+      "beat_period_ms": 545.454545,
+      "total_beats": 440,
+      "md5": "78f79d8a4e33138d055bf485333c740f"
+    },
+    {
+      "file": "techno_120bpm.mp3",
+      "bpm_exact": 120.0,
+      "beat_period_ms": 500.0,
+      "total_beats": 480,
+      "md5": "becbcebb1a01066e7af3c53bcca4c3fe"
+    },
+    {
+      "file": "techno_125bpm.mp3",
+      "bpm_exact": 125.0,
+      "beat_period_ms": 480.0,
+      "total_beats": 500,
+      "md5": "fbbef4138a0d9af4b4e0bd5720a5cda7"
+    },
+    {
+      "file": "techno_128bpm.mp3",
+      "bpm_exact": 128.0,
+      "beat_period_ms": 468.75,
+      "total_beats": 512,
+      "md5": "a4b6130b6c8b53732729fb04ae061996"
+    },
+    {
+      "file": "techno_130bpm.mp3",
+      "bpm_exact": 130.0,
+      "beat_period_ms": 461.538462,
+      "total_beats": 520,
+      "md5": "9845523a9dca5be59ced5b0741ab42d4"
+    },
+    {
+      "file": "techno_135bpm.mp3",
+      "bpm_exact": 135.0,
+      "beat_period_ms": 444.444444,
+      "total_beats": 540,
+      "md5": "31198e796865843747feaf3967be7327"
+    },
+    {
+      "file": "techno_140bpm.mp3",
+      "bpm_exact": 140.0,
+      "beat_period_ms": 428.571429,
+      "total_beats": 560,
+      "md5": "186dd4686049399fe68501fb51e4a105"
+    },
+    {
+      "file": "techno_145bpm.mp3",
+      "bpm_exact": 145.0,
+      "beat_period_ms": 413.793103,
+      "total_beats": 580,
+      "md5": "4037b51c070bb94317f86802f300189f"
+    },
+    {
+      "file": "techno_150bpm.mp3",
+      "bpm_exact": 150.0,
+      "beat_period_ms": 400.0,
+      "total_beats": 600,
+      "md5": "31f91c834da7302e7b42794013731125"
+    },
+    {
+      "file": "techno_155bpm.mp3",
+      "bpm_exact": 155.0,
+      "beat_period_ms": 387.096774,
+      "total_beats": 620,
+      "md5": "4ca65ae82005696aa63ee9d18aecde91"
+    },
+    {
+      "file": "techno_160bpm.mp3",
+      "bpm_exact": 160.0,
+      "beat_period_ms": 375.0,
+      "total_beats": 640,
+      "md5": "680307b1cbed435d144fb6b90524e813"
+    },
+    {
+      "file": "techno_165bpm.mp3",
+      "bpm_exact": 165.0,
+      "beat_period_ms": 363.636364,
+      "total_beats": 660,
+      "md5": "b4a1719487d46be6a1b5876248df29e3"
+    },
+    {
+      "file": "techno_170bpm.mp3",
+      "bpm_exact": 170.0,
+      "beat_period_ms": 352.941176,
+      "total_beats": 680,
+      "md5": "2a12be952208f02e6f6c1e91d82b9cdf"
+    },
+    {
+      "file": "techno_175bpm.mp3",
+      "bpm_exact": 175.0,
+      "beat_period_ms": 342.857143,
+      "total_beats": 700,
+      "md5": "92ff722774a0c4580e1e9912c3048885"
+    },
+    {
+      "file": "techno_180bpm.mp3",
+      "bpm_exact": 180.0,
+      "beat_period_ms": 333.333333,
+      "total_beats": 720,
+      "md5": "0778a699551c49e12d2a2ad62c964c59"
+    },
+    {
+      "file": "techno_185bpm.mp3",
+      "bpm_exact": 185.0,
+      "beat_period_ms": 324.324324,
+      "total_beats": 740,
+      "md5": "f48adb844d2064f0598256c8fb23c582"
+    },
+    {
+      "file": "techno_190bpm.mp3",
+      "bpm_exact": 190.0,
+      "beat_period_ms": 315.789474,
+      "total_beats": 760,
+      "md5": "0c85b8f4c6cf8e120ae291f599540927"
+    },
+    {
+      "file": "techno_195bpm.mp3",
+      "bpm_exact": 195.0,
+      "beat_period_ms": 307.692308,
+      "total_beats": 780,
+      "md5": "ad5a33bf538584aeb95515f73ef3e268"
+    },
+    {
+      "file": "techno_200bpm.mp3",
+      "bpm_exact": 200.0,
+      "beat_period_ms": 300.0,
+      "total_beats": 800,
+      "md5": "8cb09b4f6ce81cb49faaea30b27916f4"
+    }
+  ]
+}

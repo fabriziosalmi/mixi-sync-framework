@@ -1,0 +1,4 @@
+node_modules/
+dist/
+*.mp3
+*.wav
