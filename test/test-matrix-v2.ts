@@ -1,9 +1,10 @@
 /**
  * Test Matrix V2 — Benchmark BPM Dinamico + Imperfezioni Realistiche
  *
- * 24 tests in 6 categories:
+ * 32 tests in 7 categories:
  *   A-E: Dynamic BPM (16 tests, deterministic ideal conditions)
  *   F:   Realistic imperfections (8 tests — jitter, noise, BPM error, GC pause)
+ *   G:   Adversarial stress (8 tests — PI bandwidth limits, compound perturbations)
  *
  * All tests run in "fixed" mode (no bug B1).
  * Output: results/{A..F}*.json + results/summary-v2.{txt,json}
@@ -47,13 +48,15 @@ interface ImperfectionConfig {
   perturbations?: { timeS: number; deltaMs: number }[];
   /** Override bridge interval (default 0.5s). */
   bridgeIntervalS?: number;
+  /** Bridge blackout window [startS, endS] — no bridge ticks during this period. */
+  bridgeBlackout?: [number, number];
   /** PRNG seed for this test's imperfections. */
   seed?: number;
 }
 
 interface V2TestDef {
   id: string;
-  category: 'A' | 'B' | 'C' | 'D' | 'E' | 'F';
+  category: 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G';
   masterBpm: number;
   slaveBpm: number;
   durationS: number;
@@ -129,7 +132,7 @@ function generateD2(): { ramps: BpmRamp[] } {
 }
 
 /** F8 generator: random walk + BPM steps over 5 minutes */
-function generateF8(): { steps: BpmStep[] } {
+function generateF8Walk(): { steps: BpmStep[] } {
   const rng = lcg(7777);
   const steps: BpmStep[] = [];
   let bpm = 170;
@@ -320,9 +323,118 @@ const TESTS: V2TestDef[] = [
   {
     id: 'F8', category: 'F', masterBpm: 170, slaveBpm: 170, durationS: 300,
     description: 'Kitchen sink 5min: walk + jitter +-10ms + noise +-2ms',
-    generator: generateF8,
+    generator: generateF8Walk,
     imperfections: { bridgeJitterS: 0.010, positionNoiseS: 0.002, seed: 600 },
     criteria: { converge: true, relockCountMax: 100, generous: true },
+  },
+
+  // ── Cat G: Draconiano — find PI breaking points ──
+  {
+    id: 'G1', category: 'G', masterBpm: 170, slaveBpm: 170, durationS: 60,
+    description: 'GC barrage: 10ms kick every 2s (30 kicks)',
+    imperfections: {
+      perturbations: Array.from({ length: 30 }, (_, i) => ({
+        timeS: (i + 1) * 2,
+        deltaMs: (i % 2 === 0) ? 10 : -10,
+      })),
+      seed: 700,
+    },
+    // 10ms = 0.028 phase. PI corrects at 0.0085/s → 3.3s recovery.
+    // Kicks every 2s → PI can't fully recover. Persistent error expected.
+    criteria: { eMeanPost: 0.015, converge: true },
+  },
+  {
+    id: 'G2', category: 'G', masterBpm: 170, slaveBpm: 170, durationS: 30,
+    description: 'Catastrophic GC pause: 50ms kick',
+    imperfections: {
+      perturbations: [{ timeS: 10, deltaMs: 50 }],
+      seed: 701,
+    },
+    // 50ms = 0.142 phase. Recovery = 0.142/0.0085 = 16.7s
+    // Known PI bandwidth limit: MAX_CORRECTION=0.003 → can't recover fast enough
+    criteria: { eMeanPost: 0.02, converge: true, generous: true },
+  },
+  {
+    id: 'G3', category: 'G', masterBpm: 131, slaveBpm: 170, durationS: 30,
+    description: 'Ratio boundary hunt: 131<->132 every 2s',
+    // At slave=170: ratio 0.75 valid up to master~131.25, then falls to ratio 1
+    // Each flip triggers a seek — adversarial for the PI
+    steps: Array.from({ length: 7 }, (_, i) => ({
+      timeS: 4 + i * 3,
+      toBpm: i % 2 === 0 ? 132 : 131,
+    })),
+    criteria: { converge: true, generous: true },
+  },
+  {
+    id: 'G4', category: 'G', masterBpm: 170, slaveBpm: 170, durationS: 30,
+    description: 'Heavy position noise +-10ms',
+    imperfections: { positionNoiseS: 0.010, seed: 703 },
+    // 10ms = 0.028 phase noise per bridge tick.
+    // PI will oscillate around zero with amplitude ~0.028
+    criteria: { eMeanPost: 0.02, converge: true },
+  },
+  {
+    id: 'G5', category: 'G', masterBpm: 170, slaveBpm: 170, durationS: 30,
+    description: 'Bridge blackout 10s (t=10-20s) then resume',
+    imperfections: {
+      bridgeBlackout: [10, 20],
+      seed: 704,
+    },
+    // PI integrates internally so should be fine during blackout.
+    // After resume, updatePlayheads re-syncs positions.
+    criteria: { eMeanPost: 0.005, converge: true },
+  },
+  {
+    id: 'G6', category: 'G', masterBpm: 170, slaveBpm: 170, durationS: 30,
+    description: 'GC pause 15ms at BPM change (170->175 @10s)',
+    steps: [{ timeS: 10, toBpm: 175 }],
+    imperfections: {
+      perturbations: [{ timeS: 9.999, deltaMs: 15 }],
+      seed: 705,
+    },
+    // 15ms kick + BPM change simultaneously — compound worst-case timing
+    criteria: { eMeanPost: 0.01, converge: true, generous: true },
+  },
+  {
+    id: 'G7', category: 'G', masterBpm: 40, slaveBpm: 40, durationS: 60,
+    description: 'Extreme low BPM (40), GC pause 5ms',
+    imperfections: {
+      perturbations: [
+        { timeS: 15, deltaMs: 5 },
+        { timeS: 30, deltaMs: -5 },
+        { timeS: 45, deltaMs: 5 },
+      ],
+      seed: 706,
+    },
+    // 40 BPM: beat period = 1.5s. 5ms = 0.0033 phase — barely above deadzone (0.003)
+    // PI correction speed at 40 BPM = 0.003 * 40/60 = 0.002 phase/s
+    // Recovery from 0.0033 = 1.65s
+    criteria: { eMeanPost: 0.005, converge: true },
+  },
+  {
+    id: 'G8', category: 'G', masterBpm: 170, slaveBpm: 170, durationS: 120,
+    description: 'Maximum realistic stress 2min',
+    generator: () => {
+      const rng = lcg(9999);
+      const steps: BpmStep[] = [];
+      let bpm = 170;
+      for (let i = 1; i <= 40; i++) {
+        bpm = Math.max(160, Math.min(180, bpm + (rng() - 0.5) * 4));
+        steps.push({ timeS: i * 3, toBpm: Math.round(bpm * 10) / 10 });
+      }
+      return { steps };
+    },
+    imperfections: {
+      bridgeJitterS: 0.020,
+      positionNoiseS: 0.005,
+      perturbations: Array.from({ length: 12 }, (_, i) => ({
+        timeS: 10 + i * 10,
+        deltaMs: ((i % 3) - 1) * 8, // -8, 0, 8, -8, 0, 8, ...
+      })),
+      seed: 708,
+    },
+    // Everything maxed: ±2 BPM walk, ±20ms jitter, ±5ms noise, 8ms kicks every 10s
+    criteria: { converge: true, eMeanPost: 0.01, generous: true },
   },
 ];
 
@@ -343,7 +455,8 @@ function runV2Test(def: V2TestDef): TestMetrics {
     (imp.bridgeJitterS ?? 0) > 0 ||
     (imp.positionNoiseS ?? 0) > 0 ||
     (imp.perturbations?.length ?? 0) > 0 ||
-    (imp.bridgeIntervalS ?? 0) > 0
+    (imp.bridgeIntervalS ?? 0) > 0 ||
+    !!imp.bridgeBlackout
   );
 
   const masterOffset = def.masterFirstBeatOffset ?? 0;
@@ -445,8 +558,10 @@ function runV2Test(def: V2TestDef): TestMetrics {
       nextPertIdx++;
     }
 
-    // Manual bridge tick with jitter and noise
-    if (hasImperfections && t >= nextBridgeTime) {
+    // Manual bridge tick with jitter, noise, and optional blackout
+    const blackout = imp?.bridgeBlackout;
+    const inBlackout = blackout && t >= blackout[0] && t <= blackout[1];
+    if (hasImperfections && t >= nextBridgeTime && !inBlackout) {
       const reportedMaster = master.position;
       let reportedSlave = slave.position;
 
@@ -574,6 +689,7 @@ function main(): void {
     { key: 'D', label: 'Cat D -- Endurance (60s)' },
     { key: 'E', label: 'Cat E -- Stress estremo' },
     { key: 'F', label: 'Cat F -- Imperfezioni realistiche' },
+    { key: 'G', label: 'Cat G -- Draconiano (limiti PI)' },
   ];
 
   for (const cat of categories) {
