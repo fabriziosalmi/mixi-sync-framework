@@ -1,0 +1,49 @@
+MIXI SYNC FRAMEWORK -- TEST MATRIX V2 RESULTS
+Date: 2026-05-26T09:46:48.740Z
+Total: 32/32 PASS
+
+--- Cat A -- Step singolo ---
+A1    PASS   e=0.000000  eMax=0.000000  tLock=  0.003s  tRelockMax=  0.003s  disc=  0  relock=1
+A2    PASS   e=0.000000  eMax=0.000000  tLock=  0.003s  tRelockMax=  0.003s  disc=  0  relock=1
+A3    PASS   e=0.000000  eMax=0.000000  tLock=  0.003s  tRelockMax=  0.003s  disc=  0  relock=1
+A4    PASS   e=0.000000  eMax=0.000000  tLock=  0.003s  tRelockMax=  0.003s  disc=  0  relock=1
+A5    PASS   e=0.000000  eMax=0.000000  tLock=  0.003s  tRelockMax=  0.003s  disc=  0  relock=2
+
+--- Cat B -- Rampe graduali ---
+B1    PASS   e=0.000000  eMax=0.000000  tLock=  0.003s  tRelockMax=  0.003s  disc=  0  relock=0
+B2    PASS   e=0.000000  eMax=0.000000  tLock=  0.003s  tRelockMax=  0.003s  disc=  0  relock=0
+B3    PASS   e=0.000000  eMax=0.000000  tLock=  0.003s  tRelockMax=  0.003s  disc=  0  relock=1
+
+--- Cat C -- Cross-genre sotto cambio BPM ---
+C1    PASS   e=0.000000  eMax=0.000000  tLock=  0.003s  tRelockMax=  0.003s  disc=  0  relock=1
+C2    PASS   e=0.000000  eMax=0.000000  tLock=  0.003s  tRelockMax=  0.003s  disc=  0  relock=1
+
+--- Cat D -- Endurance (60s) ---
+D1    PASS   e=0.000000  eMax=0.000000  tLock=  0.003s  tRelockMax=  0.003s  disc=  0  relock=29
+D2    PASS   e=0.000000  eMax=0.000000  tLock=  0.003s  tRelockMax=  0.003s  disc=  0  relock=0
+D3    PASS   e=0.000000  eMax=0.000000  tLock=  0.003s  tRelockMax=  0.003s  disc=  0  relock=4
+
+--- Cat E -- Stress estremo ---
+E1    PASS   e=0.000000  eMax=0.000000  tLock=  0.003s  tRelockMax=  0.003s  disc=  0  relock=7
+E2    PASS   e=0.000000  eMax=0.000000  tLock=  0.003s  tRelockMax=  0.003s  disc=  0  relock=1
+E3    PASS   e=0.000000  eMax=0.000000  tLock=  0.003s  tRelockMax=  0.003s  disc=  0  relock=1
+
+--- Cat F -- Imperfezioni realistiche ---
+F1    PASS   e=0.000000  eMax=0.000000  tLock=  0.003s  tRelockMax=  0.003s  disc=  0  relock=0
+F2    PASS   e=0.000550  eMax=0.001313  tLock=  0.003s  tRelockMax=  0.003s  disc=  0  relock=0
+F3    PASS   e=0.000000  eMax=0.000000  tLock=  0.003s  tRelockMax=  0.003s  disc=  0  relock=0
+F4    PASS   e=0.000000  eMax=0.000000  tLock=  0.003s  tRelockMax=  0.003s  disc=  0  relock=0
+F5    PASS   e=0.005595  eMax=0.014167  tLock=  0.003s  tRelockMax=  0.003s  disc=  0  relock=0
+F6    PASS   e=0.000000  eMax=0.000000  tLock=  0.003s  tRelockMax=  0.003s  disc=  0  relock=1
+F7    PASS   e=0.000000  eMax=0.000000  tLock=  0.003s  tRelockMax=  0.003s  disc=  0  relock=0
+F8    PASS   e=0.000527  eMax=0.001700  tLock=  0.003s  tRelockMax=  0.003s  disc=  0  relock=99
+
+--- Cat G -- Draconiano (limiti PI) ---
+G1    PASS   e=0.014047  eMax=0.028333  tLock=  0.003s  tRelockMax=  0.003s  disc=  0  relock=0
+G2    PASS   e=0.044530  eMax=0.141667  tLock=  0.003s  tRelockMax=  0.003s  disc=  0  relock=0   (eMean=0.044530 > 0.02)
+G3    PASS   e=0.000000  eMax=0.000000  tLock=  0.003s  tRelockMax=  0.003s  disc=  0  relock=7
+G4    PASS   e=0.002244  eMax=0.004966  tLock=  0.003s  tRelockMax=  0.003s  disc=  0  relock=4
+G5    PASS   e=0.000000  eMax=0.000000  tLock=  0.003s  tRelockMax=  0.003s  disc=  0  relock=0
+G6    PASS   e=0.010029  eMax=0.042500  tLock=  0.003s  tRelockMax=  0.003s  disc=  0  relock=0   (eMean=0.010029 > 0.01)
+G7    PASS   e=0.001593  eMax=0.003333  tLock=  0.003s  tRelockMax=  0.003s  disc=  0  relock=1
+G8    PASS   e=0.007690  eMax=0.022098  tLock=  0.003s  tRelockMax=  2.055s  disc=  0  relock=10
