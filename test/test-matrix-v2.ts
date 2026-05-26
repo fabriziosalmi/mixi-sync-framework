@@ -1,12 +1,12 @@
 /**
- * Test Matrix V2 — Benchmark BPM Dinamico
+ * Test Matrix V2 — Benchmark BPM Dinamico + Imperfezioni Realistiche
  *
- * 18 tests in 5 categories that stress-test the sync engine
- * under dynamic BPM conditions (steps, ramps, endurance, stress).
+ * 24 tests in 6 categories:
+ *   A-E: Dynamic BPM (16 tests, deterministic ideal conditions)
+ *   F:   Realistic imperfections (8 tests — jitter, noise, BPM error, GC pause)
  *
  * All tests run in "fixed" mode (no bug B1).
- * Output: results/A*.json, B*.json, C*.json, D*.json, E*.json
- *         results/summary-v2.txt
+ * Output: results/{A..F}*.json + results/summary-v2.{txt,json}
  */
 
 import { writeFileSync, mkdirSync } from 'node:fs';
@@ -17,6 +17,7 @@ import { VDeck } from '../src/engine/VDeck.js';
 import { SyncEngine } from '../src/engine/SyncEngine.js';
 import { MetricsCollector, type TestMetrics } from '../src/engine/MetricsCollector.js';
 import { findBestRatio } from '../src/sync/harmonicSync.js';
+import { updatePlayheads } from '../src/sync/WorkletPI.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const RESULTS_DIR = join(__dirname, '..', 'results');
@@ -37,27 +38,45 @@ interface BpmRamp {
   toBpm: number;
 }
 
+interface ImperfectionConfig {
+  /** ±jitter on bridge timing in seconds (deterministic PRNG). */
+  bridgeJitterS?: number;
+  /** ±noise on reported slave position in seconds. */
+  positionNoiseS?: number;
+  /** Position kicks (simulating GC pauses). */
+  perturbations?: { timeS: number; deltaMs: number }[];
+  /** Override bridge interval (default 0.5s). */
+  bridgeIntervalS?: number;
+  /** PRNG seed for this test's imperfections. */
+  seed?: number;
+}
+
 interface V2TestDef {
   id: string;
-  category: 'A' | 'B' | 'C' | 'D' | 'E';
+  category: 'A' | 'B' | 'C' | 'D' | 'E' | 'F';
   masterBpm: number;
   slaveBpm: number;
   durationS: number;
   description: string;
   steps?: BpmStep[];
   ramps?: BpmRamp[];
-  /** Generator function for complex patterns (D1, D2). Called once to produce steps/ramps. */
   generator?: () => { steps?: BpmStep[]; ramps?: BpmRamp[] };
   criteria: V2Criteria;
+  // Deck config overrides
+  slaveOriginalBpm?: number;      // override detected BPM (for BPM detection error)
+  masterFirstBeatOffset?: number;
+  slaveFirstBeatOffset?: number;
+  slaveInitialOffsetMs?: number;
+  // Imperfection config (Cat F)
+  imperfections?: ImperfectionConfig;
 }
 
 interface V2Criteria {
-  tRelockMax?: number;     // max relock time after any step (seconds)
-  eMeanPost?: number;      // max eMean post-relock
-  eMaxDuring?: number;     // max eMax during ramp
-  relockCountMax?: number; // max relock count
-  converge?: boolean;      // must converge at least once
-  // Generous mode for stress tests
+  tRelockMax?: number;
+  eMeanPost?: number;
+  eMaxDuring?: number;
+  relockCountMax?: number;
+  converge?: boolean;
   generous?: boolean;
 }
 
@@ -73,27 +92,22 @@ function lcg(seed: number): () => number {
 
 // ── Generators ────────────────────────────────────────────────
 
-/** D1: Random walk ±0.5 BPM every 2s, 30 events over 60s */
 function generateD1(): { steps: BpmStep[] } {
   const rng = lcg(42);
   const steps: BpmStep[] = [];
   let bpm = 170;
   for (let i = 1; i <= 30; i++) {
-    const delta = (rng() - 0.5) * 1.0; // ±0.5 BPM
+    const delta = (rng() - 0.5) * 1.0;
     bpm = Math.max(160, Math.min(180, bpm + delta));
     steps.push({ timeS: i * 2, toBpm: Math.round(bpm * 10) / 10 });
   }
   return { steps };
 }
 
-/** D2: Sinusoidal 170 ± 3 BPM, period 8s, approximated with 16 linear segments per period */
 function generateD2(): { ramps: BpmRamp[] } {
   const ramps: BpmRamp[] = [];
-  const baseBpm = 170;
-  const amplitude = 3;
-  const period = 8;
-  const segmentsPerPeriod = 16;
-  const totalDuration = 60;
+  const baseBpm = 170, amplitude = 3, period = 8;
+  const segmentsPerPeriod = 16, totalDuration = 60;
   const numPeriods = totalDuration / period;
   const segDuration = period / segmentsPerPeriod;
 
@@ -101,10 +115,8 @@ function generateD2(): { ramps: BpmRamp[] } {
     for (let s = 0; s < segmentsPerPeriod; s++) {
       const t0 = p * period + s * segDuration;
       const t1 = t0 + segDuration;
-      const angle0 = (2 * Math.PI * (t0 / period));
-      const angle1 = (2 * Math.PI * (t1 / period));
-      const bpm0 = baseBpm + amplitude * Math.sin(angle0);
-      const bpm1 = baseBpm + amplitude * Math.sin(angle1);
+      const bpm0 = baseBpm + amplitude * Math.sin(2 * Math.PI * t0 / period);
+      const bpm1 = baseBpm + amplitude * Math.sin(2 * Math.PI * t1 / period);
       ramps.push({
         startS: Math.round(t0 * 1000) / 1000,
         endS: Math.round(t1 * 1000) / 1000,
@@ -114,6 +126,20 @@ function generateD2(): { ramps: BpmRamp[] } {
     }
   }
   return { ramps };
+}
+
+/** F8 generator: random walk + BPM steps over 5 minutes */
+function generateF8(): { steps: BpmStep[] } {
+  const rng = lcg(7777);
+  const steps: BpmStep[] = [];
+  let bpm = 170;
+  // Random walk every 3s for 300s = 100 steps
+  for (let i = 1; i <= 100; i++) {
+    const delta = (rng() - 0.5) * 2.0; // ±1.0 BPM
+    bpm = Math.max(155, Math.min(185, bpm + delta));
+    steps.push({ timeS: i * 3, toBpm: Math.round(bpm * 10) / 10 });
+  }
+  return { steps };
 }
 
 // ── Test catalog ──────────────────────────────────────────────
@@ -190,7 +216,6 @@ const TESTS: V2TestDef[] = [
     id: 'D1', category: 'D', masterBpm: 170, slaveBpm: 170, durationS: 60,
     description: 'Random walk +-0.5 BPM ogni 2s',
     generator: generateD1,
-    // 30 steps → each recordBpmChange resets lock detector → up to 30 relocks expected
     criteria: { relockCountMax: 30, converge: true },
   },
   {
@@ -216,12 +241,9 @@ const TESTS: V2TestDef[] = [
     id: 'E1', category: 'E', masterBpm: 170, slaveBpm: 170, durationS: 40,
     description: 'Alternanza rapida 170<->160 ogni 5s',
     steps: [
-      { timeS: 5, toBpm: 160 },
-      { timeS: 10, toBpm: 170 },
-      { timeS: 15, toBpm: 160 },
-      { timeS: 20, toBpm: 170 },
-      { timeS: 25, toBpm: 160 },
-      { timeS: 30, toBpm: 170 },
+      { timeS: 5, toBpm: 160 }, { timeS: 10, toBpm: 170 },
+      { timeS: 15, toBpm: 160 }, { timeS: 20, toBpm: 170 },
+      { timeS: 25, toBpm: 160 }, { timeS: 30, toBpm: 170 },
       { timeS: 35, toBpm: 160 },
     ],
     criteria: { converge: true, generous: true },
@@ -238,12 +260,76 @@ const TESTS: V2TestDef[] = [
     steps: [{ timeS: 10, toBpm: 85 }],
     criteria: { tRelockMax: 20, generous: true },
   },
+
+  // ── Cat F: Imperfezioni realistiche ──
+  {
+    id: 'F1', category: 'F', masterBpm: 170, slaveBpm: 170, durationS: 30,
+    description: 'Bridge jitter +-20ms',
+    imperfections: { bridgeJitterS: 0.020, seed: 100 },
+    criteria: { eMeanPost: 0.003, converge: true },
+  },
+  {
+    id: 'F2', category: 'F', masterBpm: 170, slaveBpm: 170, durationS: 30,
+    description: 'Position noise +-3ms su slave',
+    imperfections: { positionNoiseS: 0.003, seed: 200 },
+    criteria: { eMeanPost: 0.01, converge: true },
+  },
+  {
+    id: 'F3', category: 'F', masterBpm: 170, slaveBpm: 170, durationS: 30,
+    description: 'BPM detection error (slave 169.7 instead of 170)',
+    slaveOriginalBpm: 169.7,
+    criteria: { eMeanPost: 0.01, converge: true },
+  },
+  {
+    id: 'F4', category: 'F', masterBpm: 170, slaveBpm: 170, durationS: 30,
+    description: 'Different firstBeatOffset (master 0.2s, slave 0.5s)',
+    masterFirstBeatOffset: 0.2,
+    slaveFirstBeatOffset: 0.5,
+    criteria: { eMeanPost: 0.005, converge: true },
+  },
+  {
+    id: 'F5', category: 'F', masterBpm: 170, slaveBpm: 170, durationS: 30,
+    description: 'GC pause: 5ms position kick every 8s',
+    imperfections: {
+      perturbations: [
+        { timeS: 8, deltaMs: 5 },
+        { timeS: 16, deltaMs: -5 },
+        { timeS: 24, deltaMs: 5 },
+      ],
+      seed: 300,
+    },
+    // 5ms kick = 0.014 phase at 170 BPM. PI corrects at ~0.0085 phase/s
+    // → ~1.6s recovery per kick. 3 kicks in 30s raises eMean above 0.005.
+    // 0.008 phase = ~2.8ms at 170 BPM — still sub-audible.
+    criteria: { eMeanPost: 0.008, converge: true },
+  },
+  {
+    id: 'F6', category: 'F', masterBpm: 170, slaveBpm: 170, durationS: 30,
+    description: 'Jitter +-15ms + BPM step +5 @10s',
+    steps: [{ timeS: 10, toBpm: 175 }],
+    imperfections: { bridgeJitterS: 0.015, seed: 400 },
+    criteria: { eMeanPost: 0.005, converge: true },
+  },
+  {
+    id: 'F7', category: 'F', masterBpm: 170, slaveBpm: 170, durationS: 30,
+    description: 'Slow bridge 2s + ramp 170->175',
+    ramps: [{ startS: 10, endS: 15, fromBpm: 170, toBpm: 175 }],
+    imperfections: { bridgeIntervalS: 2.0, seed: 500 },
+    criteria: { eMaxDuring: 0.1, eMeanPost: 0.01, converge: true },
+  },
+  {
+    id: 'F8', category: 'F', masterBpm: 170, slaveBpm: 170, durationS: 300,
+    description: 'Kitchen sink 5min: walk + jitter +-10ms + noise +-2ms',
+    generator: generateF8,
+    imperfections: { bridgeJitterS: 0.010, positionNoiseS: 0.002, seed: 600 },
+    criteria: { converge: true, relockCountMax: 100, generous: true },
+  },
 ];
 
 // ── Simulation runner ─────────────────────────────────────────
 
 function runV2Test(def: V2TestDef): TestMetrics {
-  // Expand generator if present
+  // Expand generator
   let steps = def.steps ?? [];
   let ramps = def.ramps ?? [];
   if (def.generator) {
@@ -252,44 +338,61 @@ function runV2Test(def: V2TestDef): TestMetrics {
     if (gen.ramps) ramps = gen.ramps;
   }
 
+  const imp = def.imperfections;
+  const hasImperfections = !!imp && (
+    (imp.bridgeJitterS ?? 0) > 0 ||
+    (imp.positionNoiseS ?? 0) > 0 ||
+    (imp.perturbations?.length ?? 0) > 0 ||
+    (imp.bridgeIntervalS ?? 0) > 0
+  );
+
+  const masterOffset = def.masterFirstBeatOffset ?? 0;
+  const slaveOffset = def.slaveFirstBeatOffset ?? 0;
+  const slaveOrigBpm = def.slaveOriginalBpm ?? def.slaveBpm;
+  const slaveInitOffset = (def.slaveInitialOffsetMs ?? 0) / 1000;
+
   const master = new VDeck({
     bpm: def.masterBpm,
     originalBpm: def.masterBpm,
-    firstBeatOffset: 0,
+    firstBeatOffset: masterOffset,
     initialPosition: 5.0,
     playbackRate: 1.0,
   });
 
   const slave = new VDeck({
     bpm: def.slaveBpm,
-    originalBpm: def.slaveBpm,
-    firstBeatOffset: 0,
-    initialPosition: 5.0,
+    originalBpm: slaveOrigBpm,
+    firstBeatOffset: slaveOffset,
+    initialPosition: 5.0 - slaveInitOffset,
     playbackRate: 1.0,
   });
 
+  // If imperfections active, disable internal bridge and control it manually
+  const bridgeInterval = imp?.bridgeIntervalS ?? 0.5;
   const engine = new SyncEngine(master, slave, {
     tickRateHz: TICK_RATE_HZ,
-    bridgeIntervalS: 0.5,
+    bridgeIntervalS: hasImperfections ? 999999 : 0.5,
     simulateBugB1: false,
   });
 
   engine.startSync();
 
   const collector = new MetricsCollector();
-  // Initialize segment tracking with initial BPM
   collector.recordBpmChange(0, def.masterBpm, def.masterBpm, false);
 
   const totalTicks = Math.round(def.durationS * TICK_RATE_HZ);
   const dt = 1 / TICK_RATE_HZ;
 
-  // Pre-sort steps by time for efficient processing
   const sortedSteps = [...steps].sort((a, b) => a.timeS - b.timeS);
   let nextStepIdx = 0;
-
-  // Track current BPM for ramp change detection
   let currentMasterBpm = def.masterBpm;
   let lastRampBpm: number | null = null;
+
+  // Imperfection state
+  const impRng = lcg(imp?.seed ?? 42);
+  let nextBridgeTime = bridgeInterval;
+  const perturbations = [...(imp?.perturbations ?? [])].sort((a, b) => a.timeS - b.timeS);
+  let nextPertIdx = 0;
 
   for (let i = 0; i < totalTicks; i++) {
     const t = (i + 1) * dt;
@@ -298,16 +401,16 @@ function runV2Test(def: V2TestDef): TestMetrics {
     while (nextStepIdx < sortedSteps.length && t >= sortedSteps[nextStepIdx].timeS) {
       const step = sortedSteps[nextStepIdx];
       const bpmBefore = currentMasterBpm;
-      const ratioBefore = findBestRatio(bpmBefore, def.slaveBpm);
+      const ratioBefore = findBestRatio(bpmBefore, slaveOrigBpm);
       engine.changeMasterBpm(step.toBpm);
-      const ratioAfter = findBestRatio(step.toBpm, def.slaveBpm);
+      const ratioAfter = findBestRatio(step.toBpm, slaveOrigBpm);
       collector.recordBpmChange(t, bpmBefore, step.toBpm, ratioBefore !== ratioAfter);
       currentMasterBpm = step.toBpm;
       lastRampBpm = null;
       nextStepIdx++;
     }
 
-    // Process ramps (interpolation per tick)
+    // Process ramps
     for (const ramp of ramps) {
       if (t >= ramp.startS && t <= ramp.endS) {
         const frac = (t - ramp.startS) / (ramp.endS - ramp.startS);
@@ -316,11 +419,10 @@ function runV2Test(def: V2TestDef): TestMetrics {
 
         if (lastRampBpm === null || Math.abs(roundedBpm - lastRampBpm) >= 0.1) {
           const bpmBefore = currentMasterBpm;
-          const ratioBefore = findBestRatio(bpmBefore, def.slaveBpm);
+          const ratioBefore = findBestRatio(bpmBefore, slaveOrigBpm);
           engine.changeMasterBpm(roundedBpm);
-          const ratioAfter = findBestRatio(roundedBpm, def.slaveBpm);
+          const ratioAfter = findBestRatio(roundedBpm, slaveOrigBpm);
 
-          // Only log significant changes (>=1 BPM or ratio change) to avoid flooding
           if (Math.abs(roundedBpm - bpmBefore) >= 1.0 || ratioBefore !== ratioAfter) {
             collector.recordBpmChange(t, bpmBefore, roundedBpm, ratioBefore !== ratioAfter);
           }
@@ -328,12 +430,41 @@ function runV2Test(def: V2TestDef): TestMetrics {
           currentMasterBpm = roundedBpm;
           lastRampBpm = roundedBpm;
         } else {
-          // Still apply the BPM even without logging
           engine.changeMasterBpm(roundedBpm);
           currentMasterBpm = roundedBpm;
         }
-        break; // only one ramp active at a time
+        break;
       }
+    }
+
+    // Apply perturbations (GC pause simulation)
+    while (nextPertIdx < perturbations.length && t >= perturbations[nextPertIdx].timeS) {
+      const pert = perturbations[nextPertIdx];
+      const deltaS = pert.deltaMs / 1000;
+      slave.position += deltaS;
+      nextPertIdx++;
+    }
+
+    // Manual bridge tick with jitter and noise
+    if (hasImperfections && t >= nextBridgeTime) {
+      const reportedMaster = master.position;
+      let reportedSlave = slave.position;
+
+      // Add position noise
+      if (imp!.positionNoiseS) {
+        const noise = (impRng() - 0.5) * 2 * imp!.positionNoiseS;
+        reportedSlave += noise;
+      }
+
+      updatePlayheads(engine.piState, reportedMaster, reportedSlave);
+
+      // Schedule next bridge with jitter
+      let nextInterval = bridgeInterval;
+      if (imp!.bridgeJitterS) {
+        nextInterval += (impRng() - 0.5) * 2 * imp!.bridgeJitterS;
+        nextInterval = Math.max(0.05, nextInterval); // floor at 50ms
+      }
+      nextBridgeTime = t + nextInterval;
     }
 
     const sample = engine.tick();
@@ -343,7 +474,7 @@ function runV2Test(def: V2TestDef): TestMetrics {
   return collector.compute(def.id, {
     masterBpm: def.masterBpm,
     slaveBpm: def.slaveBpm,
-    slaveOffsetMs: 0,
+    slaveOffsetMs: def.slaveInitialOffsetMs ?? 0,
     simulateBugB1: false,
     durationS: def.durationS,
     tickRateHz: TICK_RATE_HZ,
@@ -364,7 +495,6 @@ function evaluateV2(metrics: TestMetrics, def: V2TestDef): V2GateResult {
   const info: string[] = [];
   const c = def.criteria;
 
-  // tRelockMax: check all segments' relock times
   if (c.tRelockMax !== undefined && metrics.segments) {
     for (const seg of metrics.segments) {
       if (seg.tRelockS !== null && seg.tRelockS > c.tRelockMax) {
@@ -378,35 +508,26 @@ function evaluateV2(metrics: TestMetrics, def: V2TestDef): V2GateResult {
     }
   }
 
-  // eMeanPost: post-lock mean error
   if (c.eMeanPost !== undefined && metrics.eMean > c.eMeanPost) {
     const msg = `eMean=${metrics.eMean.toFixed(6)} > ${c.eMeanPost}`;
     if (c.generous) { info.push(msg); } else { failures.push(msg); }
   }
 
-  // eMaxDuring: max error during the entire run
   if (c.eMaxDuring !== undefined && metrics.eMax > c.eMaxDuring) {
     const msg = `eMax=${metrics.eMax.toFixed(6)} > ${c.eMaxDuring}`;
     if (c.generous) { info.push(msg); } else { failures.push(msg); }
   }
 
-  // relockCountMax
   if (c.relockCountMax !== undefined && metrics.relockCount > c.relockCountMax) {
     const msg = `relockCount=${metrics.relockCount} > ${c.relockCountMax}`;
     if (c.generous) { info.push(msg); } else { failures.push(msg); }
   }
 
-  // converge: must lock at least once
   if (c.converge && !metrics.converged) {
     failures.push('never converged');
   }
 
-  return {
-    testId: def.id,
-    pass: failures.length === 0,
-    failures,
-    info,
-  };
+  return { testId: def.id, pass: failures.length === 0, failures, info };
 }
 
 // ── Format ────────────────────────────────────────────────────
@@ -415,8 +536,7 @@ function formatV2Line(m: TestMetrics, def: V2TestDef, gate: V2GateResult): strin
   const status = gate.pass ? 'PASS' : 'FAIL';
   const tLock = m.tLockS !== null ? `${m.tLockS.toFixed(3)}s` : 'never';
   const tRelockMax = m.tRelockMaxS !== null && m.tRelockMaxS !== undefined
-    ? `${m.tRelockMaxS.toFixed(3)}s`
-    : 'n/a';
+    ? `${m.tRelockMaxS.toFixed(3)}s` : 'n/a';
 
   const parts = [
     `${def.id.padEnd(4)}`,
@@ -429,12 +549,8 @@ function formatV2Line(m: TestMetrics, def: V2TestDef, gate: V2GateResult): strin
     `relock=${m.relockCount}`,
   ];
 
-  if (gate.failures.length > 0) {
-    parts.push(` [${gate.failures.join('; ')}]`);
-  }
-  if (gate.info.length > 0) {
-    parts.push(` (${gate.info.join('; ')})`);
-  }
+  if (gate.failures.length > 0) parts.push(` [${gate.failures.join('; ')}]`);
+  if (gate.info.length > 0) parts.push(` (${gate.info.join('; ')})`);
 
   return parts.join('  ');
 }
@@ -448,7 +564,7 @@ function main(): void {
   const allGates: V2GateResult[] = [];
 
   console.log(`\n${'='.repeat(100)}`);
-  console.log('  MIXI SYNC FRAMEWORK -- TEST MATRIX V2 (Dynamic BPM Benchmark)');
+  console.log('  MIXI SYNC FRAMEWORK -- TEST MATRIX V2 (Dynamic BPM + Realistic Imperfections)');
   console.log(`${'='.repeat(100)}\n`);
 
   const categories = [
@@ -457,6 +573,7 @@ function main(): void {
     { key: 'C', label: 'Cat C -- Cross-genre sotto cambio BPM' },
     { key: 'D', label: 'Cat D -- Endurance (60s)' },
     { key: 'E', label: 'Cat E -- Stress estremo' },
+    { key: 'F', label: 'Cat F -- Imperfezioni realistiche' },
   ];
 
   for (const cat of categories) {
@@ -475,7 +592,6 @@ function main(): void {
       allMetrics.push(metrics);
       allGates.push(gate);
 
-      // Write individual result
       writeFileSync(
         join(RESULTS_DIR, `${def.id}.json`),
         JSON.stringify(metrics, null, 2),
@@ -499,16 +615,11 @@ function main(): void {
     console.log(`  ${cat.key}: ${label}`);
 
     for (const g of catGates) {
-      const m = allMetrics.find(x => x.testId === g.testId)!;
       const def = TESTS.find(t => t.id === g.testId)!;
       const statusChar = g.pass ? '+' : '-';
       console.log(`    ${statusChar} ${g.testId}: ${def.description}`);
-      if (g.failures.length > 0) {
-        console.log(`      FAIL: ${g.failures.join('; ')}`);
-      }
-      if (g.info.length > 0) {
-        console.log(`      INFO: ${g.info.join('; ')}`);
-      }
+      if (g.failures.length > 0) console.log(`      FAIL: ${g.failures.join('; ')}`);
+      if (g.info.length > 0) console.log(`      INFO: ${g.info.join('; ')}`);
     }
   }
 
@@ -516,28 +627,24 @@ function main(): void {
   const totalTests = allGates.length;
   console.log(`\n  Total: ${totalPass}/${totalTests} PASS`);
 
-  // ── Write summary file ──────────────────────────────────────
+  // ── Write files ─────────────────────────────────────────────
 
   const summaryLines: string[] = [];
   summaryLines.push('MIXI SYNC FRAMEWORK -- TEST MATRIX V2 RESULTS');
   summaryLines.push(`Date: ${new Date().toISOString()}`);
   summaryLines.push(`Total: ${totalPass}/${totalTests} PASS`);
   summaryLines.push('');
-
   for (const cat of categories) {
     summaryLines.push(`--- ${cat.label} ---`);
-    const catTests = TESTS.filter(t => t.category === cat.key);
-    for (const def of catTests) {
+    for (const def of TESTS.filter(t => t.category === cat.key)) {
       const m = allMetrics.find(x => x.testId === def.id)!;
       const g = allGates.find(x => x.testId === def.id)!;
       summaryLines.push(formatV2Line(m, def, g));
     }
     summaryLines.push('');
   }
-
   writeFileSync(join(RESULTS_DIR, 'summary-v2.txt'), summaryLines.join('\n'));
 
-  // Write summary JSON
   const summaryJson = {
     timestamp: new Date().toISOString(),
     totalPass,
@@ -545,26 +652,17 @@ function main(): void {
     tests: allGates.map(g => {
       const m = allMetrics.find(x => x.testId === g.testId)!;
       return {
-        testId: g.testId,
-        pass: g.pass,
-        failures: g.failures,
-        info: g.info,
-        tLockS: m.tLockS,
-        eMean: m.eMean,
-        eMax: m.eMax,
-        discontinuities: m.discontinuities,
-        relockCount: m.relockCount,
+        testId: g.testId, pass: g.pass, failures: g.failures, info: g.info,
+        tLockS: m.tLockS, eMean: m.eMean, eMax: m.eMax,
+        discontinuities: m.discontinuities, relockCount: m.relockCount,
         tRelockMaxS: m.tRelockMaxS,
-        bpmEvents: m.bpmEvents?.length ?? 0,
-        segments: m.segments?.length ?? 0,
+        bpmEvents: m.bpmEvents?.length ?? 0, segments: m.segments?.length ?? 0,
       };
     }),
   };
   writeFileSync(join(RESULTS_DIR, 'summary-v2.json'), JSON.stringify(summaryJson, null, 2));
 
   console.log(`\n${'='.repeat(100)}\n`);
-
-  // Exit with 0 — V2 is a benchmark, not a gate (some FAILs are expected data)
   process.exit(0);
 }
 
