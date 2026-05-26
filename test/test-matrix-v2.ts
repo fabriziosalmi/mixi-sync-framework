@@ -190,7 +190,8 @@ const TESTS: V2TestDef[] = [
     id: 'D1', category: 'D', masterBpm: 170, slaveBpm: 170, durationS: 60,
     description: 'Random walk +-0.5 BPM ogni 2s',
     generator: generateD1,
-    criteria: { relockCountMax: 5, converge: true },
+    // 30 steps → each recordBpmChange resets lock detector → up to 30 relocks expected
+    criteria: { relockCountMax: 30, converge: true },
   },
   {
     id: 'D2', category: 'D', masterBpm: 170, slaveBpm: 170, durationS: 60,

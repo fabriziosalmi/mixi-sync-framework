@@ -151,7 +151,10 @@ export class SyncEngine {
     }
 
     // 5. Compute actual phase error (ground truth, using originalBpm + harmonic ratio)
-    const masterBeatPeriod = 60 / this.master.bpm;
+    // Use originalBpm: beats in the audio file are at fixed intervals of 60/originalBpm.
+    // master.bpm may differ from originalBpm after changeMasterBpm() — using it
+    // would cause the same baseRate² error as B6 but on the master side.
+    const masterBeatPeriod = 60 / this.master.originalBpm;
     const masterPhase = (((this.master.position - this.master.firstBeatOffset) / masterBeatPeriod) % 1 + 1) % 1;
     const gtSlavePeriod = this.harmonicRatio !== 1
       ? virtualBeatPeriod(this.slave.originalBpm, this.harmonicRatio)
@@ -185,6 +188,8 @@ export class SyncEngine {
    * so the PI controller adapts smoothly.
    */
   changeMasterBpm(newBpm: number): void {
+    const oldRatio = this.harmonicRatio;
+
     // 1. Update master deck (BPM + playbackRate)
     this.master.bpm = newBpm;
     this.master.playbackRate = newBpm / this.master.originalBpm;
@@ -198,10 +203,38 @@ export class SyncEngine {
     this.slave.playbackRate = newRate;
     this.slave.bpm = Math.round(this.slave.originalBpm * newRate * 10) / 10;
 
-    // 4. Update PI state (do NOT reset integral — PI adapts)
+    // 4. If harmonic ratio changed, re-align slave phase via seek.
+    // The virtual beat grid changes with ratio — without a seek, the slave
+    // sits at the wrong phase in the new grid and the PI must slowly converge.
+    // This mirrors what startSync() does at initial sync.
+    if (this.harmonicRatio !== oldRatio) {
+      const masterBeatPeriod = 60 / this.master.originalBpm;
+      const slaveBeatPeriod = this.harmonicRatio !== 1
+        ? virtualBeatPeriod(this.slave.originalBpm, this.harmonicRatio)
+        : 60 / this.slave.originalBpm;
+
+      const masterFrac = (((this.master.position - this.master.firstBeatOffset) / masterBeatPeriod) % 1 + 1) % 1;
+      const slaveFrac = (((this.slave.position - this.slave.firstBeatOffset) / slaveBeatPeriod) % 1 + 1) % 1;
+
+      let phaseDelta = masterFrac - slaveFrac;
+      if (phaseDelta > 0.5) phaseDelta -= 1;
+      if (phaseDelta < -0.5) phaseDelta += 1;
+
+      const seekOffset = phaseDelta * slaveBeatPeriod;
+      this.slave.position = Math.max(0, this.slave.position + seekOffset);
+      this.slaveEffectivePosition = this.slave.position;
+    }
+
+    // 5. Update PI state (do NOT reset integral — PI adapts)
     this.piState.baseRate = newRate;
     this.piState.masterBpm = newBpm;
     // masterOriginalBpm stays the same (same master track)
+
+    // 6. Re-sync PI playhead integrators to actual deck positions.
+    // Without this, masterTime/slaveTime diverge from reality after
+    // the BPM change and the PI sees a phantom phase error.
+    this.piState.masterTime = this.master.position;
+    this.piState.slaveTime = this.slave.position;
   }
 
   /** Current simulation time in seconds. */
