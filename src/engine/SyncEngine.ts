@@ -77,7 +77,9 @@ export class SyncEngine {
 
     // 2. Phase alignment using virtual beat period (harmonic-aware, B6 fix)
     this.harmonicRatio = ratio;
-    const masterBeatPeriod = 60 / this.master.bpm;
+    // B7 FIX: use originalBpm, not bpm. Beats in the audio file are at
+    // intervals of 60/originalBpm regardless of current playback rate.
+    const masterBeatPeriod = 60 / this.master.originalBpm;
     const slaveBeatPeriod = ratio !== 1
       ? virtualBeatPeriod(this.slave.originalBpm, ratio)
       : 60 / this.slave.originalBpm;

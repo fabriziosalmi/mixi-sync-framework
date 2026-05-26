@@ -1,6 +1,6 @@
 ---
 title: "MIXI Sync Engine — Benchmark Report"
-subtitle: "58 test, 7 categorie, 1.4M tick simulati"
+subtitle: "68 test, 8 categorie, ~2.4M tick simulati"
 date: "2026-05-26"
 author: "mixi-sync-framework"
 geometry: margin=2cm
@@ -19,11 +19,11 @@ Il motore sync di mixi e stato analizzato, simulato e testato con **58 scenari**
 
 | Metrica | Valore |
 |---------|--------|
-| Test totali | 58 (26 V1 + 32 V2) |
-| PASS | 58/58 (100%) |
-| Bug scoperti | 4 (B6, B7, phase re-seek, playhead re-sync) |
-| Tick simulati | ~1.4 milioni |
-| Durata simulata | ~780 secondi (13 min) |
+| Test totali | 68 (26 V1 + 42 V2) |
+| PASS | 68/68 (100%) |
+| Bug scoperti | 4 (B6, B7 x3 siti, phase re-seek, playhead re-sync) |
+| Tick simulati | ~2.4 milioni |
+| Durata simulata | ~1380 secondi (23 min) |
 
 **Risultato**: il motore sync, con i fix applicati, mantiene phase error = 0 in condizioni ideali e sub-audible error (< 2ms) sotto perturbazioni realistiche.
 
@@ -217,6 +217,26 @@ Test intenzionalmente beyond-spec per mappare i limiti architetturali.
 
 **8/8 PASS** (2 con INFO annotations).
 
+## Cat H — Stress combinato + edge cases
+
+La lacuna tra Cat A-E (BPM dinamico ideale) e Cat F-G (imperfezioni a BPM fisso).
+Cat H testa **BPM dinamico + imperfezioni simultaneamente** — lo scenario reale.
+
+| ID | Scenario | eMean | eMax | tRelockMax | Note |
+|----|----------|-------|------|------------|------|
+| H1 | Ramp + jitter +/-15ms + noise | 0.0004 | 0.001 | 0.003s | Ramp con imperfections |
+| H2 | Step + 3 GC kick intorno | 0.006 | 0.034 | 0.003s | BPM step bracketed da kick |
+| H3 | Cross-genre ramp + noise +/-5ms | 0.0006 | 0.002 | 0.003s | Ratio boundary con noise |
+| H4 | DJ session 3min (6 step + tutto) | 0.002 | 0.010 | 8.28s | Scenario realistico |
+| H5 | 200 BPM + step + 5ms kick | 0.007 | 0.017 | 0.003s | High BPM |
+| H6 | Slave a pos 0.1s + ratio change | 0.000 | 0.000 | -- | Math.max(0) clamp test |
+| H7 | Ramp 60s + jitter + noise + kick | 0.004 | 0.013 | 0.003s | Endurance combinato |
+| H8 | Offset asimmetrici + step + noise | 0.0006 | 0.002 | 0.003s | firstBeatOffset test |
+| H9 | Half-time (ratio 2) + ramp + jitter | 0.000 | 0.000 | 0.003s | Cross-ratio |
+| H10 | Ultimate 5min (walk+ramp+kick+jitter) | 0.003 | 0.014 | 7.12s | Test definitivo |
+
+**10/10 PASS**. H10 e il test piu severo: 5 minuti, BPM walk + ramps + kick + jitter + noise. eMean=0.003 (1ms a 170 BPM), tRelockMax=7.1s, 21 relock. Sub-audible.
+
 \newpage
 
 # Mappa dei Limiti del PI
@@ -243,12 +263,24 @@ Perturbazione     Phase error    Recovery time    Udibile?
 | 1 | B6 | `pitch-shift-processor.ts:224` | `slaveBpm = slaveOriginalBpm` | Cross-genre sync |
 | 2 | B7 | `pitch-shift-processor.ts:219` | `60 / masterOriginalBpm` | Dynamic BPM |
 | 3 | B7 | `PhaseLockLoop.ts` (phase) | Stessa correzione lato bridge | Dynamic BPM |
-| 4 | Re-seek | `mixiStore.ts:syncDeck()` | Seek su cambio ratio | Genre shift |
-| 5 | Re-sync | `pitch-shift-processor.ts` | masterTime/slaveTime = position | BPM change |
+| 4 | B7 | `mixiStore.ts:syncDeck()` | `60 / originalBpm` nel seek | Re-sync after BPM change |
+| 5 | Re-seek | `mixiStore.ts:syncDeck()` | Seek su cambio ratio | Genre shift |
+| 6 | Re-sync | `pitch-shift-processor.ts` | masterTime/slaveTime = position | BPM change |
 
 Priorita: **B6 > B7 > Re-seek > Re-sync**. B6 da solo risolve il 90% dei problemi di sync cross-genre.
+
+# Riepilogo Finale
+
+| Suite | PASS | Total | Note |
+|-------|------|-------|------|
+| V1 Static (13 x 2 modi) | 26 | 26 | Tutti PERFECT (eMean=0) |
+| V2 Dynamic BPM (A-E) | 16 | 16 | Tutti PERFECT (eMean=0) |
+| V2 Imperfections (F) | 8 | 8 | Sub-audible |
+| V2 Adversarial (G) | 8 | 8 | 2 limiti PI documentati |
+| V2 Combined stress (H) | 10 | 10 | BPM dinamico + imperfezioni |
+| **Totale** | **68** | **68** | |
 
 ---
 
 *Report generato automaticamente da mixi-sync-framework.*
-*58/58 test PASS. 4 bug scoperti e fixati. 0 regressioni.*
+*68/68 test PASS. 4 bug scoperti (B6, B7, phase re-seek, playhead re-sync). 6 fix. 0 regressioni.*

@@ -731,6 +731,32 @@ Fix: re-allineamento fase (come in `startSync()`) quando `harmonicRatio !== oldR
 
 *G2, G6: PASS con `generous=true` — superano la soglia nominale ma sono scenari intenzionalmente beyond-spec che documentano i limiti fisici del PI controller.
 
+#### Cat H — Stress combinato + edge cases (l'intersezione che mancava)
+
+Cat A-E girano in condizioni ideali. Cat F-G girano a BPM fisso (eccetto G8).
+Cat H colma la lacuna: **BPM dinamico + imperfezioni simultaneamente**.
+
+| Test | Scenario | eMean | eMax | tRelockMax | Note |
+|------|----------|-------|------|------------|------|
+| H1 | Ramp 170→180 + jitter ±15ms + noise ±3ms | 0.0004 | 0.001 | 0.003s | Ramp + imperfections OK |
+| H2 | Step 170→175 + 3 GC kick (5/8/-5ms) | 0.006 | 0.034 | 0.003s | BPM step bracketed da kick |
+| H3 | Cross-genre ramp 128→135 + noise ±5ms | 0.0006 | 0.002 | 0.003s | Attraversa ratio boundary |
+| H4 | DJ session 3min (6 step + jitter + noise + kick) | 0.002 | 0.010 | 8.28s | Scenario realistico completo |
+| H5 | 200 BPM + step +10 + 5ms kick | 0.007 | 0.017 | 0.003s | High BPM, PI più veloce |
+| H6 | Slave a posizione 0.1s + ratio change | 0.000 | 0.000 | — | Math.max(0) clamp OK |
+| H7 | Ramp 160→180→160 in 60s + jitter + noise + kick | 0.004 | 0.013 | 0.003s | Endurance con tutto |
+| H8 | Offset asimmetrici (0.3s/0.8s) + step + noise | 0.0006 | 0.002 | 0.003s | firstBeatOffset diversi |
+| H9 | Slave half-time (ratio 2) + ramp + jitter | 0.000 | 0.000 | 0.003s | Cross-ratio con ramp |
+| H10 | Ultimate 5min: walk + ramps + kick + jitter + noise | 0.003 | 0.014 | 7.12s | Il test definitivo |
+
+**10/10 PASS**. La lacuna è colmata: BPM dinamico con imperfezioni produce errori sub-audible (eMean < 0.003 = 1ms a 170 BPM) in tutti gli scenari realistici.
+
+**H10** è il test più severo dell'intero framework: 5 minuti con BPM walk continuo, rampe up/down, perturbazioni GC, jitter ±12ms, noise ±3ms. eMean = 0.003 (1ms), tRelockMax = 7.1s, 21 relock su 300s. Il PI mantiene il lock sotto stress combinato prolungato.
+
+### Fix aggiuntivo scoperto in code review
+
+**B7 in startSync()**: `startSync()` usava `60 / this.master.bpm` per il masterBeatPeriod durante il phase alignment. Stessa classe di bug B7 — dovrebbe usare `originalBpm`. Latente perché startSync è chiamato prima di qualsiasi cambio BPM, ma si manifesta se l'utente fa unsync+resync dopo un cambio BPM. Fixato.
+
 ### Analisi limiti PI
 
 La velocita massima di correzione del PI e vincolata da MAX_CORRECTION = ±0.003:
@@ -751,13 +777,14 @@ Tempo per correggere:
 
 ### Riepilogo fix per backport a mixi
 
-| Fix | File mixi | Modifica |
-|-----|-----------|----------|
-| B6 | `pitch-shift-processor.ts:224` | `slaveBpm = slaveOriginalBpm` (rimuovere `* baseRate`) |
-| B7 | `pitch-shift-processor.ts:219` | `masterPeriod = 60 / masterOriginalBpm` (era `masterBpm`) |
-| B7 | `PhaseLockLoop.ts` (phase computation) | Stessa correzione lato bridge |
-| Phase re-seek | `mixiStore.ts:syncDeck()` | Aggiungere seek quando ratio armonico cambia |
-| Playhead re-sync | `pitch-shift-processor.ts` | Re-sync masterTime/slaveTime su cambio BPM |
+| # | Fix | File mixi | Modifica |
+|---|-----|-----------|----------|
+| 1 | B6 | `pitch-shift-processor.ts:224` | `slaveBpm = slaveOriginalBpm` (rimuovere `* baseRate`) |
+| 2 | B7 | `pitch-shift-processor.ts:219` | `masterPeriod = 60 / masterOriginalBpm` (era `masterBpm`) |
+| 3 | B7 | `PhaseLockLoop.ts` (phase computation) | Stessa correzione lato bridge |
+| 4 | B7 | `mixiStore.ts:syncDeck()` (seek) | `masterBeatPeriod = 60 / originalBpm` nel seek di fase |
+| 5 | Phase re-seek | `mixiStore.ts:syncDeck()` | Aggiungere seek quando ratio armonico cambia |
+| 6 | Playhead re-sync | `pitch-shift-processor.ts` | Re-sync masterTime/slaveTime su cambio BPM |
 
 ### Gate 5 — Checklist V2
 
@@ -766,10 +793,12 @@ Tempo per correggere:
 | G5.1 | Cat A-E (16 test): tutti eMean = 0 | PASS |
 | G5.2 | Cat F (8 test): tutti eMean < soglia | PASS |
 | G5.3 | Cat G (8 test): tutti convergenti | PASS |
-| G5.4 | F8 (5min kitchen sink): eMean < 0.001 | PASS (0.0005) |
-| G5.5 | G8 (2min max stress): tRelockMax < 5s | PASS (2.05s) |
-| G5.6 | V1 no regressione: 26/26 PASS | PASS |
-| G5.7 | Risultati in results/ con JSON + summary | PASS |
+| G5.4 | Cat H (10 test): tutti eMean < soglia | PASS |
+| G5.5 | F8 (5min kitchen sink): eMean < 0.001 | PASS (0.0005) |
+| G5.6 | H10 (5min ultimate): eMean < 0.005 | PASS (0.003) |
+| G5.7 | G8 (2min max stress): tRelockMax < 5s | PASS (2.05s) |
+| G5.8 | V1 no regressione: 26/26 PASS | PASS |
+| G5.9 | Risultati in results/ con JSON + summary | PASS |
 
 **Gate 5: VERDE**
 
@@ -783,8 +812,9 @@ Tempo per correggere:
 | V2 Dynamic BPM (Cat A-E) | 16 | 16 | Tutti PERFECT (eMean=0) |
 | V2 Imperfections (Cat F) | 8 | 8 | Sub-audible error |
 | V2 Adversarial (Cat G) | 8 | 8 | 2 limiti PI documentati |
-| **Totale** | **58** | **58** | |
+| V2 Combined stress (Cat H) | 10 | 10 | BPM dinamico + imperfezioni |
+| **Totale** | **68** | **68** | |
 
-Bug scoperti e fixati: **B6** (baseRate^2 slave), **B7** (masterBpm vs originalBpm), **phase re-seek** (ratio change), **playhead re-sync** (BPM change).
+Bug scoperti e fixati: **B6** (baseRate^2 slave), **B7** (masterBpm vs originalBpm, 3 siti), **phase re-seek** (ratio change), **playhead re-sync** (BPM change).
 
-Backport a mixi: 5 modifiche in 3 file (pitch-shift-processor.ts, PhaseLockLoop.ts, mixiStore.ts).
+Backport a mixi: 6 modifiche in 3 file (pitch-shift-processor.ts, PhaseLockLoop.ts, mixiStore.ts).

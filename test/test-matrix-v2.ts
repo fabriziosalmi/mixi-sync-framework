@@ -1,10 +1,11 @@
 /**
  * Test Matrix V2 — Benchmark BPM Dinamico + Imperfezioni Realistiche
  *
- * 32 tests in 7 categories:
+ * 42 tests in 8 categories:
  *   A-E: Dynamic BPM (16 tests, deterministic ideal conditions)
  *   F:   Realistic imperfections (8 tests — jitter, noise, BPM error, GC pause)
  *   G:   Adversarial stress (8 tests — PI bandwidth limits, compound perturbations)
+ *   H:   Combined stress + edge cases (10 tests — dynamic BPM with imperfections)
  *
  * All tests run in "fixed" mode (no bug B1).
  * Output: results/{A..F}*.json + results/summary-v2.{txt,json}
@@ -56,7 +57,7 @@ interface ImperfectionConfig {
 
 interface V2TestDef {
   id: string;
-  category: 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G';
+  category: 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H';
   masterBpm: number;
   slaveBpm: number;
   durationS: number;
@@ -70,6 +71,9 @@ interface V2TestDef {
   masterFirstBeatOffset?: number;
   slaveFirstBeatOffset?: number;
   slaveInitialOffsetMs?: number;
+  // Position overrides (default: 5.0s into the track)
+  masterInitialPositionS?: number;
+  slaveInitialPositionS?: number;
   // Imperfection config (Cat F)
   imperfections?: ImperfectionConfig;
 }
@@ -436,6 +440,186 @@ const TESTS: V2TestDef[] = [
     // Everything maxed: ±2 BPM walk, ±20ms jitter, ±5ms noise, 8ms kicks every 10s
     criteria: { converge: true, eMeanPost: 0.01, generous: true },
   },
+
+  // ── Cat H: Combined stress + edge cases (la lacuna) ──────
+
+  {
+    id: 'H1', category: 'H', masterBpm: 170, slaveBpm: 170, durationS: 30,
+    description: 'Ramp 170->180 with bridge jitter +-15ms + noise +-3ms',
+    ramps: [{ startS: 5, endS: 15, fromBpm: 170, toBpm: 180 }],
+    imperfections: {
+      bridgeJitterS: 0.015,
+      positionNoiseS: 0.003,
+      seed: 801,
+    },
+    // Ramp + imperfections simultaneously — the real-world gap
+    criteria: { eMeanPost: 0.005, converge: true },
+  },
+  {
+    id: 'H2', category: 'H', masterBpm: 170, slaveBpm: 170, durationS: 30,
+    description: 'Step 170->175 @10s with 3 GC pauses around it (8s,10s,12s)',
+    steps: [{ timeS: 10, toBpm: 175 }],
+    imperfections: {
+      perturbations: [
+        { timeS: 8, deltaMs: 5 },
+        { timeS: 10.001, deltaMs: 8 },
+        { timeS: 12, deltaMs: -5 },
+      ],
+      seed: 802,
+    },
+    // BPM step bracketed by GC pauses
+    criteria: { eMeanPost: 0.008, converge: true },
+  },
+  {
+    id: 'H3', category: 'H', masterBpm: 128, slaveBpm: 170, durationS: 40,
+    description: 'Cross-genre ramp 128->135 with position noise +-5ms',
+    // Crosses ratio boundary ~131 BPM while noise is active
+    ramps: [{ startS: 5, endS: 25, fromBpm: 128, toBpm: 135 }],
+    imperfections: {
+      positionNoiseS: 0.005,
+      seed: 803,
+    },
+    criteria: { eMeanPost: 0.008, converge: true },
+  },
+  {
+    id: 'H4', category: 'H', masterBpm: 128, slaveBpm: 128, durationS: 180,
+    description: 'Realistic DJ session: 128->132->128->140->128 with jitter+noise',
+    // 3-minute simulation of a real DJ set with imperfections
+    steps: [
+      { timeS: 20, toBpm: 130 },
+      { timeS: 45, toBpm: 132 },
+      { timeS: 70, toBpm: 128 },
+      { timeS: 90, toBpm: 135 },
+      { timeS: 120, toBpm: 140 },
+      { timeS: 150, toBpm: 128 },
+    ],
+    imperfections: {
+      bridgeJitterS: 0.010,
+      positionNoiseS: 0.002,
+      perturbations: [
+        { timeS: 30, deltaMs: 3 },
+        { timeS: 60, deltaMs: -3 },
+        { timeS: 100, deltaMs: 5 },
+        { timeS: 140, deltaMs: -4 },
+      ],
+      seed: 804,
+    },
+    criteria: { eMeanPost: 0.005, converge: true },
+  },
+  {
+    id: 'H5', category: 'H', masterBpm: 200, slaveBpm: 200, durationS: 30,
+    description: 'High BPM 200 with ramp +10 and 5ms GC kicks',
+    steps: [{ timeS: 10, toBpm: 210 }],
+    imperfections: {
+      perturbations: [
+        { timeS: 5, deltaMs: 5 },
+        { timeS: 15, deltaMs: -5 },
+        { timeS: 25, deltaMs: 5 },
+      ],
+      seed: 805,
+    },
+    // 200 BPM: beat period = 0.3s, PI correction = 0.003*200/60 = 0.01 phase/s (faster!)
+    // 5ms = 0.017 phase → 1.7s recovery
+    criteria: { eMeanPost: 0.008, converge: true },
+  },
+  {
+    id: 'H6', category: 'H', masterBpm: 170, slaveBpm: 170, durationS: 30,
+    description: 'Slave near position 0 (0.1s) + ratio change step',
+    // Tests Math.max(0) clamp in seek: slave at 0.1s, ratio change
+    // seeks backward and potentially clamps to 0
+    slaveInitialPositionS: 0.1,
+    masterInitialPositionS: 0.1,
+    steps: [{ timeS: 0.5, toBpm: 128 }], // triggers ratio change 1 -> 0.75
+    criteria: { eMeanPost: 0.01, converge: true, generous: true },
+  },
+  {
+    id: 'H7', category: 'H', masterBpm: 170, slaveBpm: 170, durationS: 60,
+    description: 'Endurance ramp sweep 160->180->160 with all imperfections',
+    ramps: [
+      { startS: 5, endS: 25, fromBpm: 170, toBpm: 180 },
+      { startS: 30, endS: 50, fromBpm: 180, toBpm: 160 },
+    ],
+    imperfections: {
+      bridgeJitterS: 0.012,
+      positionNoiseS: 0.003,
+      perturbations: [
+        { timeS: 10, deltaMs: 4 },
+        { timeS: 20, deltaMs: -3 },
+        { timeS: 35, deltaMs: 5 },
+        { timeS: 45, deltaMs: -4 },
+      ],
+      seed: 807,
+    },
+    // Continuous ramp + imperfections for 60s
+    criteria: { eMeanPost: 0.005, converge: true },
+  },
+  {
+    id: 'H8', category: 'H', masterBpm: 170, slaveBpm: 170, durationS: 30,
+    description: 'Asymmetric offsets (master 0.3s, slave 0.8s) + BPM step + noise',
+    masterFirstBeatOffset: 0.3,
+    slaveFirstBeatOffset: 0.8,
+    steps: [{ timeS: 10, toBpm: 175 }, { timeS: 20, toBpm: 168 }],
+    imperfections: {
+      positionNoiseS: 0.004,
+      seed: 808,
+    },
+    // Different firstBeatOffsets + dynamic BPM + noise
+    criteria: { eMeanPost: 0.005, converge: true },
+  },
+  {
+    id: 'H9', category: 'H', masterBpm: 170, slaveBpm: 85, durationS: 30,
+    description: 'Half-time slave (ratio 2) + ramp + jitter',
+    // Slave originalBpm=85, ratio=2: master 170 -> slave plays at 85 but phase-locked
+    ramps: [{ startS: 8, endS: 18, fromBpm: 170, toBpm: 175 }],
+    imperfections: {
+      bridgeJitterS: 0.015,
+      seed: 809,
+    },
+    // Cross-ratio with ramp and imperfections
+    criteria: { eMeanPost: 0.005, converge: true },
+  },
+  {
+    id: 'H10', category: 'H', masterBpm: 170, slaveBpm: 170, durationS: 300,
+    description: 'Ultimate 5min: walk + ramps + kicks + jitter + noise',
+    generator: (): { steps: BpmStep[]; ramps: BpmRamp[] } => {
+      const rng = lcg(810);
+      const steps: BpmStep[] = [];
+      const ramps: BpmRamp[] = [];
+
+      // Phase 1: 0-60s — steady with small nudges
+      for (let t = 10; t < 60; t += 8) {
+        steps.push({ timeS: t, toBpm: 170 + (rng() - 0.5) * 4 });
+      }
+      // Phase 2: 60-120s — ramp up
+      ramps.push({ startS: 60, endS: 90, fromBpm: 170, toBpm: 180 });
+      // Phase 3: 120-180s — hold at 180 with walks
+      for (let t = 95; t < 180; t += 10) {
+        steps.push({ timeS: t, toBpm: 180 + (rng() - 0.5) * 3 });
+      }
+      // Phase 4: 180-240s — ramp down through potential ratio boundary
+      ramps.push({ startS: 180, endS: 220, fromBpm: 180, toBpm: 160 });
+      // Phase 5: 240-300s — settle back
+      steps.push({ timeS: 225, toBpm: 165 });
+      steps.push({ timeS: 260, toBpm: 170 });
+
+      return { steps, ramps };
+    },
+    imperfections: {
+      bridgeJitterS: 0.012,
+      positionNoiseS: 0.003,
+      perturbations: (() => {
+        const p: { timeS: number; deltaMs: number }[] = [];
+        const rng = lcg(811);
+        for (let t = 15; t < 290; t += 20 + rng() * 10) {
+          p.push({ timeS: Math.round(t * 10) / 10, deltaMs: (rng() - 0.4) * 8 });
+        }
+        return p;
+      })(),
+      seed: 812,
+    },
+    // The definitive test: everything combined for 5 minutes
+    criteria: { eMeanPost: 0.005, converge: true },
+  },
 ];
 
 // ── Simulation runner ─────────────────────────────────────────
@@ -464,11 +648,14 @@ function runV2Test(def: V2TestDef): TestMetrics {
   const slaveOrigBpm = def.slaveOriginalBpm ?? def.slaveBpm;
   const slaveInitOffset = (def.slaveInitialOffsetMs ?? 0) / 1000;
 
+  const masterPos = def.masterInitialPositionS ?? 5.0;
+  const slavePos = def.slaveInitialPositionS ?? 5.0;
+
   const master = new VDeck({
     bpm: def.masterBpm,
     originalBpm: def.masterBpm,
     firstBeatOffset: masterOffset,
-    initialPosition: 5.0,
+    initialPosition: masterPos,
     playbackRate: 1.0,
   });
 
@@ -476,7 +663,7 @@ function runV2Test(def: V2TestDef): TestMetrics {
     bpm: def.slaveBpm,
     originalBpm: slaveOrigBpm,
     firstBeatOffset: slaveOffset,
-    initialPosition: 5.0 - slaveInitOffset,
+    initialPosition: slavePos - slaveInitOffset,
     playbackRate: 1.0,
   });
 
@@ -690,6 +877,7 @@ function main(): void {
     { key: 'E', label: 'Cat E -- Stress estremo' },
     { key: 'F', label: 'Cat F -- Imperfezioni realistiche' },
     { key: 'G', label: 'Cat G -- Draconiano (limiti PI)' },
+    { key: 'H', label: 'Cat H -- Stress combinato + edge cases' },
   ];
 
   for (const cat of categories) {
