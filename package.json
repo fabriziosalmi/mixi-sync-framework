@@ -1,0 +1,16 @@
+{
+  "name": "mixi-sync-framework",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "test": "node --import tsx test/sync-test.ts",
+    "test:matrix": "node --import tsx test/test-matrix.ts"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "tsx": "^4.19.0",
+    "@types/node": "^22.0.0"
+  }
+}

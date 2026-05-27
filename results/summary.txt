@@ -1,0 +1,34 @@
+MIXI SYNC FRAMEWORK — TEST MATRIX RESULTS
+Date: 2026-05-26T10:05:44.949Z
+Simulation: 30s @ 344.5 Hz
+Gate 3: VERDE
+
+Bug B1 mode:
+T01_bugB1         PASS   ē=0.000000  ē_ms=  0.000  eMax=0.000000  eMax_ms=  0.000  σ=0.000000  tLock=  0.003s  disc=  0  dz=100.0%  relock=0  
+T02_bugB1         PASS   ē=0.000000  ē_ms=  0.000  eMax=0.000000  eMax_ms=  0.000  σ=0.000000  tLock=  0.003s  disc=  0  dz=100.0%  relock=0  
+T03_bugB1         PASS   ē=0.000000  ē_ms=  0.000  eMax=0.000000  eMax_ms=  0.000  σ=0.000000  tLock=  0.003s  disc=  0  dz=100.0%  relock=0  
+T04_bugB1         PASS   ē=0.000000  ē_ms=  0.000  eMax=0.000000  eMax_ms=  0.000  σ=0.000000  tLock=  0.003s  disc=  0  dz=100.0%  relock=0  
+T05_bugB1         PASS   ē=0.000000  ē_ms=  0.000  eMax=0.000000  eMax_ms=  0.000  σ=0.000000  tLock=  0.003s  disc=  0  dz=100.0%  relock=0  
+T06_bugB1         PASS   ē=0.000000  ē_ms=  0.000  eMax=0.000000  eMax_ms=  0.000  σ=0.000000  tLock=  0.003s  disc=  0  dz=100.0%  relock=0  
+T07_bugB1         PASS   ē=0.000000  ē_ms=  0.000  eMax=0.000000  eMax_ms=  0.000  σ=0.000000  tLock=  0.003s  disc=  0  dz=100.0%  relock=0  
+T08_bugB1         PASS   ē=0.000000  ē_ms=  0.000  eMax=0.000000  eMax_ms=  0.000  σ=0.000000  tLock=  0.003s  disc=  0  dz=100.0%  relock=0  
+T09_bugB1         PASS   ē=0.000000  ē_ms=  0.000  eMax=0.000000  eMax_ms=  0.000  σ=0.000000  tLock=  0.003s  disc=  0  dz=100.0%  relock=0  
+T10_bugB1         PASS   ē=0.000000  ē_ms=  0.000  eMax=0.000000  eMax_ms=  0.000  σ=0.000000  tLock=  0.003s  disc=  0  dz=100.0%  relock=0  
+T11_bugB1         PASS   ē=0.000000  ē_ms=  0.000  eMax=0.000000  eMax_ms=  0.000  σ=0.000000  tLock=  0.003s  disc=  0  dz=100.0%  relock=0  
+T12_bugB1         PASS   ē=0.000000  ē_ms=  0.000  eMax=0.000000  eMax_ms=  0.000  σ=0.000000  tLock=  0.003s  disc=  0  dz=100.0%  relock=0  
+T13_bugB1         PASS   ē=0.000000  ē_ms=  0.000  eMax=0.000000  eMax_ms=  0.000  σ=0.000000  tLock=  0.003s  disc=  0  dz=100.0%  relock=0  
+
+Fixed mode:
+T01_fixed         PASS   ē=0.000000  ē_ms=  0.000  eMax=0.000000  eMax_ms=  0.000  σ=0.000000  tLock=  0.003s  disc=  0  dz=100.0%  relock=0  
+T02_fixed         PASS   ē=0.000000  ē_ms=  0.000  eMax=0.000000  eMax_ms=  0.000  σ=0.000000  tLock=  0.003s  disc=  0  dz=100.0%  relock=0  
+T03_fixed         PASS   ē=0.000000  ē_ms=  0.000  eMax=0.000000  eMax_ms=  0.000  σ=0.000000  tLock=  0.003s  disc=  0  dz=100.0%  relock=0  
+T04_fixed         PASS   ē=0.000000  ē_ms=  0.000  eMax=0.000000  eMax_ms=  0.000  σ=0.000000  tLock=  0.003s  disc=  0  dz=100.0%  relock=0  
+T05_fixed         PASS   ē=0.000000  ē_ms=  0.000  eMax=0.000000  eMax_ms=  0.000  σ=0.000000  tLock=  0.003s  disc=  0  dz=100.0%  relock=0  
+T06_fixed         PASS   ē=0.000000  ē_ms=  0.000  eMax=0.000000  eMax_ms=  0.000  σ=0.000000  tLock=  0.003s  disc=  0  dz=100.0%  relock=0  
+T07_fixed         PASS   ē=0.000000  ē_ms=  0.000  eMax=0.000000  eMax_ms=  0.000  σ=0.000000  tLock=  0.003s  disc=  0  dz=100.0%  relock=0  
+T08_fixed         PASS   ē=0.000000  ē_ms=  0.000  eMax=0.000000  eMax_ms=  0.000  σ=0.000000  tLock=  0.003s  disc=  0  dz=100.0%  relock=0  
+T09_fixed         PASS   ē=0.000000  ē_ms=  0.000  eMax=0.000000  eMax_ms=  0.000  σ=0.000000  tLock=  0.003s  disc=  0  dz=100.0%  relock=0  
+T10_fixed         PASS   ē=0.000000  ē_ms=  0.000  eMax=0.000000  eMax_ms=  0.000  σ=0.000000  tLock=  0.003s  disc=  0  dz=100.0%  relock=0  
+T11_fixed         PASS   ē=0.000000  ē_ms=  0.000  eMax=0.000000  eMax_ms=  0.000  σ=0.000000  tLock=  0.003s  disc=  0  dz=100.0%  relock=0  
+T12_fixed         PASS   ē=0.000000  ē_ms=  0.000  eMax=0.000000  eMax_ms=  0.000  σ=0.000000  tLock=  0.003s  disc=  0  dz=100.0%  relock=0  
+T13_fixed         PASS   ē=0.000000  ē_ms=  0.000  eMax=0.000000  eMax_ms=  0.000  σ=0.000000  tLock=  0.003s  disc=  0  dz=100.0%  relock=0  
