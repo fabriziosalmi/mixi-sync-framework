@@ -9,7 +9,7 @@ const RATIOS = [1, 2, 0.5, 1.5, 0.75, 4 / 3, 3 / 4] as const;
 const MAX_ERROR_BPM = 5;
 
 export function findBestRatio(masterBpm: number, slaveBpm: number): number {
-  if (masterBpm <= 0 || slaveBpm <= 0) return 1;
+  if (!Number.isFinite(masterBpm) || !Number.isFinite(slaveBpm) || masterBpm <= 0 || slaveBpm <= 0) return 1;
 
   let bestRatio = 1;
   let bestError = Infinity;
